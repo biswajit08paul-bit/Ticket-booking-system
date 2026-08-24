@@ -1,0 +1,151 @@
+System design :
+
+
+                    TICKET BOOKING SYSTEM - SYSTEM DESIGN
+                    Biswajit Paul  August 2026
+
+
+1. INTRODUCTION
+
+The Ticket Booking System is a real-time full-stack platform designed for 
+booking movie and concert tickets. It addresses the critical problem of 
+high-demand events where seats sell out instantly and abandoned checkouts 
+result in wasted inventory. The system provides a visual seat selection 
+interface, temporary seat locking with automatic expiry, concurrency-safe 
+booking, automated waitlist allocation on cancellations, and QR-code ticket 
+delivery via email.
+
+2. TECHNICAL ARCHITECTURE
+
+
+BACKEND (Node.js + Express.js):
+
+• RESTful API with JWT-based authentication
+• Sequelize ORM for PostgreSQL database operations
+• Key Services:
+  - Authentication: Role-based access (User, Manager, Admin)
+  - Seat Service: Hold, release, and TTL expiry management
+  - Booking Service: Creation, cancellation, and QR generation
+  - Waitlist Service: FIFO queue with time-limited offers
+  - Scheduler: Node-cron for auto-releasing expired holds
+
+FRONTEND (React.js + Socket.io):
+
+• User Dashboard: Browse events, seat selection, booking
+• Manager Dashboard: Event management, revenue analytics
+• Admin Dashboard: Venue management, user management
+• Real-time Updates: WebSocket connections for live seat status
+
+DATABASE (PostgreSQL):
+
+• Users: Role-based accounts (user, manager, admin)
+• Venues: Venue information with seat layout
+• Seats: Individual seat details per venue
+• Events: Event details including date, time, pricing
+• EventSeats: Per-show seat status (available/held/booked)
+• Bookings: Booking records with QR code data
+• Waitlist: FIFO queue per event and seat category
+
+3. CORE MECHANISMS
+A. SEAT HOLD AND TTL MECHANISM
+
+Flow:
+1. Customer selects a seat from the visual seat map
+2. Frontend sends hold request with event_id and seat_id
+3. Backend initiates database transaction with row-level locking
+4. System checks if seat is available (status = 'available')
+5. Seat status changes to 'held' with hold_expires_at = NOW() + 10 minutes
+6. Transaction commits and Socket.io broadcasts seat update
+7. Customer has 10 minutes to complete checkout
+
+Auto-Release:
+- Cron job runs every minute to release expired holds
+- Expired hold → status = 'available', held_by = NULL
+- Broadcasts seat-update event via Socket.io
+
+B. CONCURRENCY PREVENTION
+
+Problem: 100 users try to book the same seat simultaneously.
+Only one user should successfully hold or book the seat.
+
+Solution:
+- Database row-level locking with transactions (SELECT ... FOR UPDATE)
+- Sequelize LOCK.UPDATE ensures atomic operations
+
+Flow:
+1. User A requests hold for Seat X → Transaction begins
+2. SELECT ... FOR UPDATE locks Seat X row
+3. Seat X status checked → Changed to held → Transaction commits
+4. User B requests hold for Seat X → Transaction begins
+5. SELECT ... FOR UPDATE attempts to lock Seat X → Waits
+6. User B's transaction times out or receives error
+7. Result: Only User A successfully holds Seat X
+
+Edge Cases:
+- User holds seat but doesn't complete checkout → Auto-release after TTL
+- User closes browser during hold → Same auto-release mechanism
+- Two users holding different seats → No conflict
+
+C. WAITLIST AUTO-ASSIGNMENT
+
+Joining:
+1. Customer clicks "Join Waitlist" when event is sold out
+2. System creates waitlist entry with position = MAX(position) + 1
+3. Customer receives confirmation with current position
+
+Auto-Assignment on Cancellation:
+1. Customer cancels booking → Seat becomes available
+2. System finds first waiting user (position ASC, status = 'waiting')
+3. Waitlist entry status changes to 'offered'
+4. offer_expires_at = NOW() + 1 hour (time-limited)
+5. Customer receives email notification with booking link
+6. If customer books within 1 hour → Seat booked → Waitlist = 'fulfilled'
+7. If customer doesn't book within 1 hour → Offer expires → Status = 'expired'
+8. System offers seat to next customer in queue
+
+D. QR CODE GENERATION
+
+Flow:
+1. Booking confirmed → Generate unique booking reference (BKGxxxxx)
+2. Create JSON payload with booking details
+3. Generate QR code using 'qrcode' npm package
+4. Save QR code to bookings.qr_code field
+5. Attach QR code to confirmation email
+6. Send email using Nodemailer (Gmail SMTP)
+
+Verification:
+- Scan QR code → Extract booking_reference
+- Query database for matching booking
+- Check if booking exists and status = 'confirmed'
+- Valid → Allow entry | Invalid → Deny entry
+
+4. EVALUATION CRITERIA CHECKLIST
+
+
+ Seat hold TTL and auto-release          - 10-minute hold, cron auto-release
+ Concurrency protection                  - Row-level locking with transactions
+ Waitlist auto-assignment                - FIFO queue per seat category
+ Time-limited offer flow                 - 1-hour offer with auto-reassignment
+ Seat map data model                     - EventSeats per-show status
+ Real-time status updates                - Socket.io broadcasts instantly
+ QR code generation                      - Generated on booking
+ Email delivery                          - Nodemailer with Gmail SMTP
+
+5. CONCLUSION
+
+The Ticket Booking System successfully addresses all core requirements of the 
+project specification. The system provides a robust, real-time booking platform 
+with comprehensive concurrency protection, automated waitlist management, and 
+secure QR-code ticket delivery.
+
+Key Strengths:
+• Reliable concurrency prevention using database-level locking
+• Automated seat release preventing abandoned checkouts
+• Intelligent waitlist with time-limited offers for cancelled seats
+• Real-time seat map updates across all connected clients
+• Secure QR-code ticketing with email delivery
+• Role-based architecture with separate dashboards
+
+The system is production-ready and can be deployed to cloud platforms like 
+Render and Vercel for public access.
+

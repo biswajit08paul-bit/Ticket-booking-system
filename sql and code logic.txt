@@ -1,0 +1,113 @@
+Database Schema
+
+Users Table
+
+sql
+
+CREATE TABLE users (
+  user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name VARCHAR(100) NOT NULL,
+  email VARCHAR(100) NOT NULL,
+  phone_number VARCHAR(15) NOT NULL,
+  date_of_birth DATE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  user_type ENUM('user', 'manager', 'admin') DEFAULT 'user',
+  registration_code VARCHAR(20) UNIQUE,
+  company_name VARCHAR(100),
+  address TEXT,
+  is_verified BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  otp_code VARCHAR(6),
+  otp_expires_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+Events Table
+sql
+CREATE TABLE events (
+  event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(200) NOT NULL,
+  event_type ENUM('movie', 'concert', 'play', 'sports', 'live'),
+  description TEXT,
+  date DATE NOT NULL,
+  time TIME NOT NULL,
+  venue_id UUID REFERENCES venues(venue_id),
+  organiser_id UUID REFERENCES users(user_id),
+  base_price DECIMAL(10,2) NOT NULL,
+  max_seats INTEGER NOT NULL,
+  available_seats INTEGER NOT NULL,
+  status ENUM('upcoming', 'live', 'completed', 'cancelled') DEFAULT 'upcoming',
+  is_sold_out BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+EventSeats Table (Per Show Seat Status)
+sql
+CREATE TABLE event_seats (
+  event_seat_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID REFERENCES events(event_id),
+  seat_id UUID REFERENCES seats(seat_id),
+  status ENUM('available', 'held', 'booked') DEFAULT 'available',
+  hold_expires_at TIMESTAMP,
+  held_by UUID REFERENCES users(user_id),
+  price DECIMAL(10,2) NOT NULL,
+  UNIQUE(event_id, seat_id)
+);
+
+Waitlist Table
+sql
+CREATE TABLE waitlist (
+  waitlist_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID REFERENCES events(event_id),
+  user_id UUID REFERENCES users(user_id),
+  seat_category ENUM('premium', 'standard', 'economy', 'vip'),
+  position INTEGER NOT NULL,
+  status ENUM('waiting', 'offered', 'expired', 'fulfilled') DEFAULT 'waiting',
+  offer_expires_at TIMESTAMP,
+  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(event_id, user_id, seat_category)
+);
+
+
+Core Logic :
+
+Seat Hold & TTL Mechanism:
+
+Customer selects a seat
+
+System locks the seat using database transaction with SELECT ... FOR UPDATE
+Seat status changes to HELD
+hold_expires_at is set to current time + TTL (10 minutes)
+A cron job runs every minute to release expired holds
+Released seats become AVAILABLE again
+
+Concurrency Prevention
+
+Database row-level locking (LOCK.UPDATE)
+Sequelize transactions ensure atomic operations
+Two simultaneous requests for same seat → Only first succeeds
+Second request receives error: "Seat is currently held by another user"
+
+Waitlist Auto-Assignment
+
+When a booking is cancelled, seats become available
+System finds next waiting user in FIFO order
+User receives email notification with time-limited link (1 hour)
+If user doesn't book within time limit, offer expires
+Next user in queue receives the offer
+
+QR Code Generation
+
+On successful booking, generate unique booking reference
+Create JSON payload with booking reference, event, seat
+Generate QR code using qrcode package
+Attach QR code as image in confirmation email
+User can scan QR at venue for entry verification
+
+Deployment
+
+
+Push code to GitHub with render.yaml
+Add secrets in Render Dashboard
