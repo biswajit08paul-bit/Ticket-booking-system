@@ -8,43 +8,42 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      # Server
-      - key: PORT
-        value: 5000
       - key: NODE_ENV
         value: production
       
       # Database - Using Neon PostgreSQL
       - key: DATABASE_URL
-        value: postgresql://neondb_owner:npg_EH3asWBYwm6X@ep-autumn-morning-aybxs4oo.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require
-      -
-      # JWT
+        fromDatabase:
+          name: ticket-db
+          property: connectionString
+      
+      # JWT - Generate automatically
       - key: JWT_SECRET
-        value: your_super_secret_jwt_key_here
+        generateValue: true
+      
       - key: JWT_EXPIRE
         value: 7d
       
-      # Email (Gmail)
+      # Email - Set in Render Dashboard
       - key: EMAIL_USER
-        value: biswajit08paul1@gmail.com
+        sync: false
       - key: EMAIL_PASS
-        value: lnjr tdmp hydn iocy
+        sync: false
       
-      # OTP (Twilio)
+      # Twilio - Set in Render Dashboard
       - key: TWILIO_SID
-        value: AC8427d33428efaed08b931d6c0a99cfa8
+        sync: false
       - key: TWILIO_AUTH_TOKEN
-        value: e7e601795d3e33589793d1ff1ec98734
+        sync: false
       - key: TWILIO_PHONE
-        value: +17372508034
+        sync: false
       
       # Frontend URL - Will be updated after frontend deploys
       - key: FRONTEND_URL
-        value: https://ticket-booking-frontend.onrender.com
+        sync: false
       
-      # QR Code
       - key: QR_CODE_URL
-        value: https://ticket-booking-backend.onrender.com/api/verify
+        sync: false
 
   # ========== FRONTEND ==========
   - type: web
@@ -69,3 +68,6 @@ services:
 databases:
   - name: ticket-db
     plan: free
+    databaseName: ticket_booking_db
+    user: postgres
+    ipAllowList: []
