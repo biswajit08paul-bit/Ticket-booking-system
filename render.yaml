@@ -1,0 +1,26 @@
+services:
+  # ========== BACKEND ==========
+  - type: web
+    name: ticket-booking-backend
+    plan: free
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        value: your-neon-postgresql-connection-string  # Get this from Neon.tech
+
+  # ========== FRONTEND ==========
+  - type: static
+    name: ticket-booking-frontend
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          name: ticket-booking-backend
+          type: web
+          property: host  # Automatically uses the backend URL [citation:1][citation:11]
